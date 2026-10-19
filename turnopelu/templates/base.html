@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TurnoPelu</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header>
+  <h1>✂ TurnoPelu</h1>
+  {% if user %}
+  <form method="post" action="{{ url_for('logout') }}" class="inline">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <span class="mut">{{ user.name }} · {{ 'Peluquero' if user.role == 'pro' else 'Cliente' }}</span>
+    <button class="sec">Salir</button>
+  </form>
+  {% endif %}
+</header>
+<main>
+  {% if user %}
+  <nav class="tabs">
+    {% if user.role == 'pro' %}
+      <a href="{{ url_for('panel') }}" class="{{ 'on' if request.endpoint == 'panel' }}">Mis turnos</a>
+      <a href="{{ url_for('profile') }}" class="{{ 'on' if request.endpoint == 'profile' }}">Mi local</a>
+    {% else %}
+      <a href="{{ url_for('search') }}" class="{{ 'on' if request.endpoint == 'search' }}">Buscar turnos</a>
+      <a href="{{ url_for('mine') }}" class="{{ 'on' if request.endpoint == 'mine' }}">Mis reservas</a>
+    {% endif %}
+  </nav>
+  {% endif %}
+  {% for m in get_flashed_messages() %}<div class="msg">{{ m }}</div>{% endfor %}
+  {% block body %}{% endblock %}
+</main>
+</body>
+</html>

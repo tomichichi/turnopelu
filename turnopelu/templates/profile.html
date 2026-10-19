@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card">
+  <h2>Datos del local</h2>
+  <form method="post" class="grid">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div><label>Nombre</label><input name="name" value="{{ user.name }}" required></div>
+    <div><label>Dirección</label><input name="address" value="{{ user.address }}" required></div>
+    <div><label>Ciudad / barrio</label><input name="city" value="{{ user.city }}" required></div>
+    <button>Guardar</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block body %}
+<form method="get" class="card">
+  <h2>Filtrar</h2>
+  <div class="grid">
+    <div><label>Lugar (ciudad, barrio, dirección)</label><input name="q" value="{{ f.get('q','') }}"></div>
+    <div><label>Fecha</label><input name="date" type="date" min="{{ today }}" value="{{ f.get('date','') }}"></div>
+    <div><label>Hora desde</label><input name="from" type="time" value="{{ f.get('from','') }}"></div>
+    <div><label>Hora hasta</label><input name="to" type="time" value="{{ f.get('to','') }}"></div>
+    <div><label>Precio máx. ($)</label><input name="max" type="number" min="0" step="500" value="{{ f.get('max','') }}"></div>
+    <div><label>Ordenar por</label>
+      <select name="sort">
+        {% for k, v in [('time','Horario'),('price','Precio'),('place','Lugar')] %}
+        <option value="{{ k }}" {{ 'selected' if f.get('sort','time') == k }}>{{ v }}</option>
+        {% endfor %}
+      </select></div>
+    <button>Buscar</button>
+  </div>
+</form>
+<p class="mut">{{ slots|length }} turno(s) disponible(s)</p>
+{% for s in slots %}
+<div class="card row">
+  <div>
+    <b>{{ s.pname }}</b> <span class="tag">{{ s.service }}</span><br>
+    {{ s.date|fecha }} · <b>{{ s.time }}</b><br>
+    <span class="mut"><a target="_blank" rel="noopener"
+      href="https://www.google.com/maps/search/?api=1&query={{ (s.address ~ ', ' ~ s.city)|urlencode }}">📍 {{ s.address }}, {{ s.city }}</a></span>
+  </div>
+  <form method="post" action="{{ url_for('book', sid=s.id) }}" style="text-align:right"
+        onsubmit="return confirm('¿Reservar {{ s.date|fecha }} {{ s.time }} en {{ s.pname }}?')">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="price">{{ s.price|peso }}</div>
+    <button>Reservar</button>
+  </form>
+</div>
+{% endfor %}
+{% endblock %}

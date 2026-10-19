@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TurnoPelu</title>
+<style>
+:root{--bg:#f6f4f1;--card:#fff;--ink:#1f1d1b;--mut:#7a746d;--acc:#c2410c;--acc2:#fff1e8;--line:#e7e2dc;--ok:#15803d}
+@media(prefers-color-scheme:dark){:root{--bg:#161412;--card:#201d1a;--ink:#f3efe9;--mut:#a39b92;--acc:#fb923c;--acc2:#2e211a;--line:#34302b;--ok:#4ade80}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.4 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{margin:0;font-size:18px;color:var(--acc)}
+main{max-width:900px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+h2{margin:0 0 10px;font-size:17px}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}
+input,select,button{font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+input,select{width:100%}
+button{cursor:pointer;background:var(--acc);color:#fff;border-color:var(--acc);font-weight:600}
+button.sec{background:transparent;color:var(--ink);border-color:var(--line)}
+button.del{background:transparent;color:#dc2626;border-color:#dc2626}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.tabs button{background:transparent;color:var(--ink);border-color:var(--line)}
+.tabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.price{font-size:18px;font-weight:700;color:var(--acc)}
+.mut{color:var(--mut);font-size:13px}
+.tag{display:inline-block;background:var(--acc2);color:var(--acc);padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600}
+.tag.ok{color:var(--ok)}
+a{color:var(--acc)}
+.msg{padding:8px 10px;border-radius:8px;background:var(--acc2);margin-bottom:10px}
+.auth{max-width:380px;margin:40px auto}
+</style>
+</head>
+<body>
+<header><h1>✂ TurnoPelu</h1><div id="who"></div></header>
+<main id="app"></main>
+<script>
+const K='turnopelu_v1';
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let db,me=null,tab,notice='';
+
+function load(){
+  try{db=JSON.parse(localStorage.getItem(K))}catch(e){}
+  if(!db){db=seed();save()}
+  try{const s=sessionStorage.getItem(K+'_me');me=s?db.users.find(u=>u.id===s):null}catch(e){}
+}
+function save(){try{localStorage.setItem(K,JSON.stringify(db))}catch(e){}}
+const uid=()=>Math.random().toString(36).slice(2,10);
+const day=n=>{const d=new Date();d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)};
+async function hash(p){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('tp:'+p));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+
+function seed(){
+  const salons=[
+    ['Barbería Don Carlos','Av. Corrientes 1234','Buenos Aires',['Corte clásico',6000]],
+    ['Estilo Norte','Av. Cabildo 2500','Buenos Aires',['Corte + brushing',9500]],
+    ['Peluquería Luna','Bv. Oroño 800','Rosario',['Corte mujer',8000]],
+  ];
+  const users=[],slots=[];
+  salons.forEach((s,i)=>{
+    const id='demo'+i;
+    users.push({id,role:'pro',name:s[0],email:`pelu${i+1}@demo.com`,pass:null,address:s[1],city:s[2]});
+    [0,1,2].forEach(d=>['10:00','12:30','16:00','18:00'].forEach((t,j)=>{
+      if((d+j+i)%3===0)return;
+      slots.push({id:uid(),proId:id,date:day(d+(d===0?1:0)),time:t,service:s[3][0],price:s[3][1]+j*500,bookedBy:null});
+    }));
+  });
+  return{users,slots};
+}
+
+function go(t){tab=t;notice='';render()}
+function render(){
+  $('#who').innerHTML=me?`<span class="mut">${esc(me.name)} · ${me.role==='pro'?'Peluquero':'Cliente'}</span> <button class="sec" onclick="logout()">Salir</button>`:'';
+  if(!me)return authView();
+  me.role==='pro'?proView():clientView();
+}
+function logout(){try{sessionStorage.removeItem(K+'_me')}catch(e){}me=null;render()}
+
+/* ---------- Auth ---------- */
+let mode='login';
+function authView(){
+  const reg=mode==='register';
+  $('#app').innerHTML=`<div class="card auth"><h2>${reg?'Crear cuenta':'Ingresar'}</h2>
+  ${notice?`<div class="msg">${esc(notice)}</div>`:''}
+  <form onsubmit="return doAuth(event)" class="grid" style="grid-template-columns:1fr">
+   ${reg?`<div><label>Soy</label><select id="role" onchange="proFields()"><option value="client">Cliente (busco turno)</option><option value="pro">Peluquero (ofrezco turnos)</option></select></div>
+   <div><label id="nl">Nombre</label><input id="name" required></div>
+   <div id="pf" hidden><label>Dirección</label><input id="addr"><label style="margin-top:8px">Ciudad / barrio</label><input id="city"></div>`:''}
+   <div><label>Email</label><input id="email" type="email" required></div>
+   <div><label>Contraseña</label><input id="pass" type="password" required minlength="4"></div>
+   <button>${reg?'Registrarme':'Entrar'}</button>
+  </form>
+  <p class="mut">${reg?'¿Ya tenés cuenta?':'¿No tenés cuenta?'} <a href="#" onclick="mode='${reg?'login':'register'}';notice='';render();return false">${reg?'Ingresá':'Registrate'}</a></p>
+  ${reg?'':'<p class="mut">Demo: <b>cliente@demo.com</b> / <b>pelu1@demo.com</b>, clave <b>demo</b></p>'}
+  </div>`;
+}
+function proFields(){const p=$('#role').value==='pro';$('#pf').hidden=!p;$('#nl').textContent=p?'Nombre de la peluquería':'Nombre'}
+async function doAuth(e){
+  e.preventDefault();
+  const email=$('#email').value.trim().toLowerCase(),h=await hash($('#pass').value);
+  if(mode==='register'){
+    if(db.users.some(u=>u.email===email)){notice='Ese email ya está registrado';return render()}
+    const role=$('#role').value;
+    const u={id:uid(),role,name:$('#name').value.trim(),email,pass:h,address:role==='pro'?$('#addr').value.trim():'',city:role==='pro'?$('#city').value.trim():''};
+    db.users.push(u);save();me=u;
+  }else{
+    let u=db.users.find(x=>x.email===email);
+    if(!u&&email==='cliente@demo.com'){u={id:uid(),role:'client',name:'Cliente Demo',email,pass:null};db.users.push(u);save()}
+    const demo=u&&u.pass===null&&$('#pass').value==='demo';
+    if(!u||(!demo&&u.pass!==h)){notice='Email o contraseña incorrectos';return render()}
+    me=u;
+  }
+  try{sessionStorage.setItem(K+'_me',me.id)}catch(e){}
+  tab=null;notice='';render();
+}
+
+/* ---------- Peluquero ---------- */
+function proView(){
+  tab=tab||'slots';
+  const tabs=`<div class="tabs"><button class="${tab==='slots'?'on':''}" onclick="go('slots')">Mis turnos</button><button class="${tab==='profile'?'on':''}" onclick="go('profile')">Mi local</button></div>`;
+  if(tab==='profile'){
+    $('#app').innerHTML=tabs+`<div class="card"><h2>Datos del local</h2>${notice?`<div class="msg">${notice}</div>`:''}
+    <form onsubmit="return saveProfile(event)" class="grid">
+     <div><label>Nombre</label><input id="pn" value="${esc(me.name)}" required></div>
+     <div><label>Dirección</label><input id="pa" value="${esc(me.address||'')}" required></div>
+     <div><label>Ciudad / barrio</label><input id="pc" value="${esc(me.city||'')}" required></div>
+     <button>Guardar</button></form></div>`;return;
+  }
+  const mine=db.slots.filter(s=>s.proId===me.id).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+  $('#app').innerHTML=tabs+`<div class="card"><h2>Agregar turno</h2>
+  ${!me.address?'<div class="msg">Completá la dirección en “Mi local” para que te encuentren.</div>':''}
+  <form onsubmit="return addSlot(event)" class="grid">
+   <div><label>Fecha</label><input id="sd" type="date" min="${day(0)}" value="${day(1)}" required></div>
+   <div><label>Hora</label><input id="st" type="time" value="10:00" required></div>
+   <div><label>Servicio</label><input id="ss" placeholder="Corte, color…" required></div>
+   <div><label>Precio ($)</label><input id="sp" type="number" min="0" step="100" required></div>
+   <div><label>Repetir (cant. de días)</label><input id="sr" type="number" min="1" max="30" value="1"></div>
+   <button>Agregar</button></form></div>
+  <div class="card"><h2>Mis turnos (${mine.length})</h2>
+  ${mine.length?mine.map(s=>{const c=s.bookedBy&&db.users.find(u=>u.id===s.bookedBy);return`<div class="row" style="padding:8px 0;border-top:1px solid var(--line)">
+   <div><b>${fmtDate(s.date)} ${s.time}</b> · ${esc(s.service)} · $${s.price.toLocaleString('es-AR')}<br>
+   ${c?`<span class="tag ok">Reservado por ${esc(c.name)} (${esc(c.email)})</span>`:'<span class="tag">Libre</span>'}</div>
+   <button class="del" onclick="delSlot('${s.id}')">Eliminar</button></div>`}).join(''):'<p class="mut">Todavía no cargaste turnos.</p>'}</div>`;
+}
+function saveProfile(e){e.preventDefault();me.name=$('#pn').value.trim();me.address=$('#pa').value.trim();me.city=$('#pc').value.trim();save();notice='Guardado ✔';render();return false}
+function addSlot(e){
+  e.preventDefault();
+  const n=Math.max(1,+$('#sr').value||1);
+  for(let i=0;i<n;i++){const d=new Date($('#sd').value+'T12:00');d.setDate(d.getDate()+i);
+    const date=d.toISOString().slice(0,10),time=$('#st').value;
+    if(db.slots.some(s=>s.proId===me.id&&s.date===date&&s.time===time))continue;
+    db.slots.push({id:uid(),proId:me.id,date,time,service:$('#ss').value.trim(),price:+$('#sp').value,bookedBy:null});}
+  save();render();return false;
+}
+function delSlot(id){if(!confirm('¿Eliminar este turno?'))return;db.slots=db.slots.filter(s=>s.id!==id);save();render()}
+
+/* ---------- Cliente ---------- */
+const F={date:'',from:'',to:'',max:'',q:'',sort:'time'};
+function clientView(){
+  tab=tab||'search';
+  const tabs=`<div class="tabs"><button class="${tab==='search'?'on':''}" onclick="go('search')">Buscar turnos</button><button class="${tab==='mine'?'on':''}" onclick="go('mine')">Mis reservas</button></div>`;
+  if(tab==='mine'){
+    const mine=db.slots.filter(s=>s.bookedBy===me.id).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+    $('#app').innerHTML=tabs+`<div class="card"><h2>Mis reservas</h2>${mine.length?mine.map(s=>{const p=pro(s);return`<div class="row" style="padding:8px 0;border-top:1px solid var(--line)">
+     <div><b>${fmtDate(s.date)} ${s.time}</b> · ${esc(p.name)}<br><span class="mut">${esc(s.service)} · $${s.price.toLocaleString('es-AR')} · ${mapLink(p)}</span></div>
+     <button class="del" onclick="cancel('${s.id}')">Cancelar</button></div>`}).join(''):'<p class="mut">No tenés reservas.</p>'}</div>`;return;
+  }
+  $('#app').innerHTML=tabs+`<div class="card"><h2>Filtrar</h2><div class="grid">
+   <div><label>Lugar (ciudad, barrio, dirección)</label><input id="fq" value="${esc(F.q)}" oninput="F.q=this.value;list()"></div>
+   <div><label>Fecha</label><input id="fd" type="date" min="${day(0)}" value="${F.date}" oninput="F.date=this.value;list()"></div>
+   <div><label>Hora desde</label><input type="time" value="${F.from}" oninput="F.from=this.value;list()"></div>
+   <div><label>Hora hasta</label><input type="time" value="${F.to}" oninput="F.to=this.value;list()"></div>
+   <div><label>Precio máx. ($)</label><input type="number" min="0" step="500" value="${F.max}" oninput="F.max=this.value;list()"></div>
+   <div><label>Ordenar por</label><select onchange="F.sort=this.value;list()"><option value="time"${F.sort==='time'?' selected':''}>Horario</option><option value="price"${F.sort==='price'?' selected':''}>Precio</option><option value="place"${F.sort==='place'?' selected':''}>Lugar</option></select></div>
+  </div></div><div id="res"></div>`;
+  list();
+}
+const pro=s=>db.users.find(u=>u.id===s.proId)||{name:'?',address:'',city:''};
+const mapLink=p=>`<a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.address+', '+p.city)}">📍 ${esc(p.address)}, ${esc(p.city)}</a>`;
+function fmtDate(d){return new Date(d+'T12:00').toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short'})}
+function list(){
+  const now=new Date().toISOString().slice(0,16),q=F.q.trim().toLowerCase();
+  let r=db.slots.filter(s=>!s.bookedBy&&(s.date+'T'+s.time)>=now);
+  if(F.date)r=r.filter(s=>s.date===F.date);
+  if(F.from)r=r.filter(s=>s.time>=F.from);
+  if(F.to)r=r.filter(s=>s.time<=F.to);
+  if(F.max)r=r.filter(s=>s.price<=+F.max);
+  if(q)r=r.filter(s=>{const p=pro(s);return(p.name+' '+p.address+' '+p.city).toLowerCase().includes(q)});
+  r.sort((a,b)=>F.sort==='price'?a.price-b.price:F.sort==='place'?pro(a).city.localeCompare(pro(b).city)||(a.date+a.time).localeCompare(b.date+b.time):(a.date+a.time).localeCompare(b.date+b.time));
+  $('#res').innerHTML=(notice?`<div class="msg">${esc(notice)}</div>`:'')+`<p class="mut">${r.length} turno(s) disponible(s)</p>`+r.map(s=>{const p=pro(s);return`<div class="card row">
+   <div><b>${esc(p.name)}</b> <span class="tag">${esc(s.service)}</span><br>
+   <span>${fmtDate(s.date)} · <b>${s.time}</b></span><br><span class="mut">${mapLink(p)}</span></div>
+   <div style="text-align:right"><div class="price">$${s.price.toLocaleString('es-AR')}</div><button onclick="book('${s.id}')">Reservar</button></div></div>`}).join('');
+}
+function book(id){
+  const s=db.slots.find(x=>x.id===id);
+  if(!s||s.bookedBy){notice='Ese turno ya no está disponible';return list()}
+  const p=pro(s);
+  if(!confirm(`Reservar ${fmtDate(s.date)} ${s.time} en ${p.name} por $${s.price.toLocaleString('es-AR')}?`))return;
+  s.bookedBy=me.id;save();notice='';go('mine');
+}
+function cancel(id){if(!confirm('¿Cancelar la reserva?'))return;const s=db.slots.find(x=>x.id===id);if(s)s.bookedBy=null;save();render()}
+
+load();render();
+</script>
+</body>
+</html>
